@@ -52,8 +52,8 @@ PULL_IF_NOT_PRESENT ?=
 
 LDFLAGS = -ldflags "-s -w -X sigs.k8s.io/node-feature-discovery/pkg/version.version=$(VERSION) -X sigs.k8s.io/node-feature-discovery/source.pathPrefix=$(HOSTMOUNT_PREFIX)"
 
-yaml_templates := $(wildcard *.yaml.template)
-yaml_instances := $(patsubst %.yaml.template,%.yaml,$(yaml_templates))
+yaml_templates := $(wildcard manifests/*.yaml.template)
+yaml_instances := $(patsubst manifests/%.yaml.template,manifests/%.yaml,$(yaml_templates))
 
 all: image
 
