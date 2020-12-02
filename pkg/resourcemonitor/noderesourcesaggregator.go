@@ -231,14 +231,17 @@ func makeResourceMap(numaNodes int, devices []*podresourcesapi.ContainerDevices)
 	resourceMap := make(map[string]map[string]int)
 
 	for _, device := range devices {
-		deviceID2NUMAID := make(map[string]int)
+		resourceName := device.GetResourceName()
+		_, ok := resourceMap[resourceName]
+		if !ok {
+			resourceMap[resourceName] = make(map[string]int)
+		}
 		for _, node := range device.GetTopology().GetNodes() {
 			nodeNuma := int(node.GetID())
 			for _, deviceID := range device.GetDeviceIds() {
-				deviceID2NUMAID[deviceID] = nodeNuma
+				resourceMap[resourceName][deviceID] = nodeNuma
 			}
 		}
-		resourceMap[device.GetResourceName()] = deviceID2NUMAID
 	}
 	return resourceMap
 }
