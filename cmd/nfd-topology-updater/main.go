@@ -19,6 +19,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/docopt/docopt-go"
@@ -45,12 +46,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to parse command line: %v", err)
 	}
-
-	klConfig, err := kubeconf.GetKubeletConfigFromLocalFile(resourcemonitorArgs.KubeletConfigFile)
-	if err != nil {
-		log.Fatalf("error getting topology Manager Policy: %v", err)
+	tmPolicy, err  := getTopologyManagerPolicyFromAPI(resourcemonitorArgs.KubeConfigFile, os.Getenv("NODE_NAME"))
+	if err != nil{
+		log.Printf("could not get kubelet config from API: %v\nTrying to retrieve policy from file", err)
+		klConfig, err := kubeconf.GetKubeletConfigFromLocalFile(resourcemonitorArgs.KubeletConfigFile)
+		if err != nil {
+			log.Fatalf("error getting topology manager policy: %v", err)
+		}
+		tmPolicy = klConfig.TopologyManagerPolicy
 	}
-	tmPolicy := klConfig.TopologyManagerPolicy
 	log.Printf("Detected kubelet Topology Manager policy %q", tmPolicy)
 
 	podResClient, err := podres.GetPodResClient(resourcemonitorArgs.PodResourceSocketPath)
@@ -113,6 +117,8 @@ func main() {
 	}
 }
 
+
+
 // argsParse parses the command line arguments passed to the program.
 // The argument argv is passed only for testing purposes.
 func argsParse(argv []string) (topology.Args, resourcemonitor.Args, error) {
@@ -125,6 +131,7 @@ func argsParse(argv []string) (topology.Args, resourcemonitor.Args, error) {
 	   [--server-name-override=<name>] [--ca-file=<path>] [--cert-file=<path>]
 		 [--key-file=<path>] [--container-runtime=<runtime>] [--podresources-socket=<path>]
 		 [--watch-namespace=<namespace>] [--sysfs=<mountpoint>] [--kubelet-config-file=<path>]
+		 [--kube-config-file=<path>]
 
   %s -h | --help
   %s --version
@@ -154,6 +161,9 @@ func argsParse(argv []string) (topology.Args, resourcemonitor.Args, error) {
                                   [Default: /host]
   --kubelet-config-file=<path>    Kubelet config file path.
                                   [Default: /podresources/config.yaml]
+  --kube-config-file=<path>    Kubelet config file path.
+                                  [Default: /root/.kube/config]
+
   --podresources-socket=<path>    Pod Resource Socket path to use.
                                   [Default: /podresources/kubelet.sock] `,
 
@@ -185,10 +195,28 @@ func argsParse(argv []string) (topology.Args, resourcemonitor.Args, error) {
 	if kubeletConfigPath, ok := arguments["--kubelet-config-file"].(string); ok {
 		resourcemonitorArgs.KubeletConfigFile = kubeletConfigPath
 	}
+	//Would this fit better in args or resourceMonitorargs? It's here because it's equivalent to kubeletConfigPath
+	if kubernetesAPIConfigPath, ok := arguments["--kube-config-file"].(string); ok {
+		resourcemonitorArgs.KubeConfigFile = kubernetesAPIConfigPath
+	}
 	resourcemonitorArgs.SysfsRoot = arguments["--sysfs"].(string)
 	if path, ok := arguments["--podresources-socket"].(string); ok {
 		resourcemonitorArgs.PodResourceSocketPath = path
 	}
 
 	return args, resourcemonitorArgs, nil
+}
+
+// getTopologyManagerPolicyFromAPI validates the config returned from kubelet and returns the Topology Manager policy
+// TODO: Could this function fit better in the kubeconf pkg?
+func getTopologyManagerPolicyFromAPI(kubeletConfigPath string, nodename string) (string, error){
+	kc , err := kubeconf.GetKubeletConfigFromKubeletAPI(kubeletConfigPath, nodename)
+	if err != nil {
+		return "", err
+	}
+	if kc.TopologyManagerPolicy == ""{
+		return "", fmt.Errorf("no topology manager policy in config")
+	}
+	//Could additionally check that the policy is a valid one here - needs to come from some common library
+	return kc.TopologyManagerPolicy, nil
 }
